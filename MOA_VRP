@@ -1,0 +1,131 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import random
+
+# --- 1. Cài đặt tham số bài toán ---
+num_customers = 20
+num_vehicles = 10
+depot = (50, 50)
+
+# Tạo tọa độ ngẫu nhiên cho 20 khách hàng
+np.random.seed(42)
+customer_coords = np.random.randint(0, 100, size=(num_customers, 2))
+all_points = np.vstack([depot, customer_coords])  # depot là điểm 0
+
+# Tính ma trận khoảng cách giữa các điểm
+def euclidean(p1, p2):
+    return np.linalg.norm(p1 - p2)
+
+distance_matrix = np.zeros((num_customers + 1, num_customers + 1))
+for i in range(num_customers + 1):
+    for j in range(num_customers + 1):
+        distance_matrix[i][j] = euclidean(all_points[i], all_points[j])
+
+# --- 2. Biểu diễn lời giải ---
+def generate_solution():
+    customers = list(range(1, num_customers + 1))
+    random.shuffle(customers)
+    split_points = sorted(random.sample(range(1, num_customers), num_vehicles - 1))
+    routes = []
+    start = 0
+    for point in split_points:
+        routes.append([0] + customers[start:point] + [0])
+        start = point
+    routes.append([0] + customers[start:] + [0])
+    return routes
+
+# --- 3. Hàm đánh giá: tổng quãng đường ---
+def calculate_total_distance(routes):
+    total = 0
+    for route in routes:
+        for i in range(len(route) - 1):
+            total += distance_matrix[route[i]][route[i+1]]
+    return total
+
+# --- 4. Giao phối 2 cá thể ---
+def crossover(parent1, parent2):
+    all_customers = list(range(1, num_customers + 1))
+    child = []
+    visited = set()
+    for route1, route2 in zip(parent1, parent2):
+        r = []
+        for c in route1:
+            if c != 0 and c not in visited:
+                r.append(c)
+                visited.add(c)
+        for c in route2:
+            if c != 0 and c not in visited:
+                r.append(c)
+                visited.add(c)
+        if r:
+            child.append([0] + r + [0])
+    remaining = [c for c in all_customers if c not in visited]
+    if remaining:
+        child.append([0] + remaining + [0])
+    while len(child) < num_vehicles:
+        child.append([0, 0])
+    return child[:num_vehicles]
+
+# --- 5. Thuật toán Mayfly đơn giản hóa ---
+def MOA_VRP(pop_size=20, generations=100):
+    males = [generate_solution() for _ in range(pop_size // 2)]
+    females = [generate_solution() for _ in range(pop_size // 2)]
+    best_distances = []
+
+    for gen in range(generations):
+        pop = males + females
+        fitness = [calculate_total_distance(p) for p in pop]
+        best_idx = np.argmin(fitness)
+        g_best = pop[best_idx]
+        best_distances.append(fitness[best_idx])
+
+        new_males = []
+        for m in males:
+            if random.random() < 0.5:
+                child = crossover(m, g_best)
+            else:
+                child = generate_solution()
+            new_males.append(child)
+        males = new_males
+
+        new_females = []
+        for f in females:
+            male_partner = random.choice(males)
+            child = crossover(f, male_partner)
+            new_females.append(child)
+        females = new_females
+
+    return g_best, best_distances
+
+# --- 6. Chạy và trực quan hóa ---
+best_solution, convergence = MOA_VRP()
+
+# --- 7. Đồ thị hội tụ ---
+plt.figure(figsize=(8, 4))
+plt.plot(convergence, color='blue', linewidth=2)
+plt.xlabel("Thế hệ", fontsize=12)
+plt.ylabel("Tổng quãng đường", fontsize=12)
+plt.title("Biểu đồ hội tụ của thuật toán MOA trên bài toán VRP", fontsize=14)
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# --- 8. Đồ thị tuyến đường ---
+colors = plt.cm.get_cmap("tab10", num_vehicles)
+plt.figure(figsize=(8, 6))
+
+for idx, route in enumerate(best_solution):
+    if len(route) <= 2:
+        continue
+    points = all_points[route]
+    plt.plot(points[:, 0], points[:, 1], marker='o', label=f"Xe {idx+1}", color=colors(idx))
+    plt.scatter(points[1:-1, 0], points[1:-1, 1], s=100, c=[colors(idx)] * (len(points)-2), marker='x')
+
+plt.scatter(*all_points[0], c='red', s=200, marker='s', label="Kho hàng (Depot)")
+plt.title("Sơ đồ các tuyến đường giao hàng tối ưu (MOA)", fontsize=14)
+plt.xlabel("Toạ độ X")
+plt.ylabel("Toạ độ Y")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
